@@ -1,0 +1,209 @@
+#include "LibV2.h"
+#include "BeepCode.h"
+#define WheelBaseCirc (0.135 * PI)
+#define WheelCirc (0.057 * PI)
+#define scale 1.0
+#define beepLowShort newBeep(400, 150, 200)
+#define beepMidShort newBeep(800, 150, 200)
+#define beepHighShort newBeep(1600, 150, 200)
+#define beepLowLong newBeep(400, 300, 350)
+#define beepMidLong newBeep(800, 300, 350)
+#define beepHighLong newBeep(1600, 300, 350)
+#define waitForUserInput true
+#define bounceCorrection 1.25
+
+Vector2f Coors[4];
+float currentHeading = 90.0;
+struct MotorFlags
+{
+ bool AInUse;
+ bool CInUse;
+ int degA;
+ char pwrA;
+ int degC;
+ char pwrC;
+ bool ForceMode;
+};
+MotorFlags flags;
+Vector2f curPos;
+inline int round(float x)
+{
+     asm{
+         add x, x, 0.5
+         trunc __RETVAL__, x
+     }
+}
+void init()
+{
+     TextOut(0, LCD_LINE1, "SetCoorList" , DRAW_OPT_CLEAR);
+     Coors[0] = v2New(0.3,0.3);
+     Coors[1] = v2New(-0.5,0.1);
+     Coors[2] = v2New(0.4,-0.4);
+     Coors[3] = v2New(0.0,0.0);
+     TextOut(0, LCD_LINE2, "UpdateScale" , DRAW_OPT_NORMAL);
+     Coors *= scale;
+     TextOut(0, LCD_LINE3, "DefineStartPos" , DRAW_OPT_NORMAL);
+     curPos = v2New(0.0,0.0);
+     TextOut(0, LCD_LINE4, "InitMotorFlags" , DRAW_OPT_NORMAL);
+     flags.ForceMode = false;
+     flags.pwrA = 75;
+     flags.pwrC = 75;
+     flags.AInUse = false;
+     flags.CInUse = false;
+     TextOut(0, LCD_LINE5, "EnableMotorRamp" , DRAW_OPT_NORMAL);
+     SetOutput(OUT_A, OutputOptionsField, OUT_OPTION_RAMPDOWNTOLIMIT);
+     SetOutput(OUT_C, OutputOptionsField, OUT_OPTION_RAMPDOWNTOLIMIT);
+     TextOut(0, LCD_LINE6, "Init Finished!" , DRAW_OPT_NORMAL);
+     Wait(1000);
+}
+task TacAC()
+{
+       flags.AInUse = true;
+       flags.CInUse = true;
+       RotateMotor(OUT_AC, flags.pwrA, flags.degA);
+       flags.AInUse = false;
+       flags.CInUse = false;
+}
+
+task TacA()
+{
+    flags.AInUse = true;
+    RotateMotor(OUT_A, flags.pwrA, flags.degA);
+    flags.AInUse = false;
+}
+
+task TacC()
+{
+    flags.CInUse = true;
+    RotateMotor(OUT_C, flags.pwrC, flags.degC);
+    flags.CInUse = false;
+}
+
+bool dualPowerTurnToHeading(int newHeading, bool force)
+{
+    if(force)
+    {
+        StopTask(TacA);
+        StopTask(TacC);
+        flags.AInUse = false;
+        flags.CInUse = false;
+        Off(OUT_AC);
+    }
+    else
+    {
+        if(flags.AInUse || flags.CInUse)
+            return false;
+    }
+    Wait(50);
+    
+    ResetAllTachoCounts(OUT_AC);
+    float degreeTurn = newHeading - currentHeading;
+    degreeTurn %= 360;
+    if(degreeTurn > 180.0)
+        degreeTurn -= 360.0;
+    int rotDeg = round(bounceCorrection * degreeTurn * WheelBaseCirc / WheelCirc);
+    flags.degA = rotDeg;
+    flags.degC = -rotDeg;
+
+    TextOut(0, LCD_LINE3, "Rot: " + NumToStr(flags.degA) + "     " , DRAW_OPT_NORMAL);
+    StartTask(TacA);
+    StartTask(TacC);
+    Wait(50);
+    while(flags.AInUse || flags.CInUse)
+    {
+         TextOut(0, LCD_LINE4, NumToStr(MotorTachoCount(OUT_A)) +
+             "            " , DRAW_OPT_NORMAL);
+         TextOut(0, LCD_LINE5, NumToStr(MotorTachoCount(OUT_C)) +
+             "            " , DRAW_OPT_NORMAL);
+         Wait(50);
+    }
+    currentHeading = newHeading;
+    Wait(200);
+    return true;
+}
+bool dualPowerMoveForwardDist(float distance, bool force)
+{
+    if(force)
+    {
+        StopTask(TacA);
+        StopTask(TacC);
+        flags.AInUse = false;
+        flags.CInUse = false;
+        Off(OUT_AC);
+    }
+    else
+    {
+        if(flags.AInUse || flags.CInUse)
+            return false;
+    }
+    Wait(50);
+    
+    ResetAllTachoCounts(OUT_AC);
+    flags.degA = round(distance * bounceCorrection / WheelCirc * 360);
+    TextOut(0, LCD_LINE3, "Rot: " + NumToStr(flags.degA) + "     " , DRAW_OPT_NORMAL);
+    StartTask(TacAC);
+    Wait(50);
+    while(flags.AInUse || flags.CInUse)
+    {
+         TextOut(0, LCD_LINE4, NumToStr(MotorTachoCount(OUT_A)) +
+             "            " , DRAW_OPT_NORMAL);
+         TextOut(0, LCD_LINE5, NumToStr(MotorTachoCount(OUT_C)) +
+             "            " , DRAW_OPT_NORMAL);
+         Wait(50);
+    }
+    curPos = v2Add(curPos, v2Mult(v2FromAngle(currentHeading), distance));
+    Wait(200);
+    return true;
+}
+void buildBeepMove()
+{
+     ArrayInit(beeps, 0, 3);
+     beeps[0] = beepLowShort;
+     beeps[1] = beepHighShort;
+     beeps[2] = beepMidShort;
+}
+void buildBeepTurn()
+{
+     ArrayInit(beeps, 0, 3);
+     beeps[0] = beepHighShort;
+     beeps[1] = beepLowShort;
+     beeps[2] = beepMidShort;
+}
+void buildBeepStart()
+{
+     ArrayInit(beeps, 0, 3);
+     beeps[0] = beepMidShort;
+     beeps[1] = beepLowShort;
+     beeps[2] = beepMidShort;
+}
+task main()
+{
+     buildBeepStart();
+     StartTask(playBeeps);
+     init();
+     for(int i = 0; i < ArrayLen(Coors); i++)
+     {
+          TextOut(0, LCD_LINE1, "O:" + v2AsString(Coors[i]), DRAW_OPT_CLEAR);
+          Vector2f delta = v2Add(Coors[i], v2Mult(curPos, -1.0));
+          TextOut(0, LCD_LINE2, "D:" + v2AsString(delta), DRAW_OPT_NORMAL);
+          
+          dualPowerTurnToHeading(round(v2Angle(delta)), false);
+          buildBeepTurn();
+          StartTask(playBeeps);
+          
+          Wait(1000);
+
+          dualPowerMoveForwardDist(v2Length(delta), false);
+          buildBeepMove();
+          StartTask(playBeeps);
+          
+          while(!ButtonPressed(BTNCENTER, false))
+          {
+               if(waitForUserInput)
+                   continue;
+               Wait(50);
+          }
+     }
+}
+
+
