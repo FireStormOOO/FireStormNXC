@@ -1,0 +1,120 @@
+#include "Lib/LibV2.h"
+#define floatMax pow(10.0, 35.0)
+
+struct l2Line
+{
+     Vector2f Pt;
+     Vector2f Dir;
+     bool IsRay;
+};
+
+inline l2Line l2NewPtSlope(Vector2f pt, float slope)
+{
+     l2Line line;
+     line.Pt = pt;
+     line.Dir = v2Normalized(v2New(1.0, slope));
+     line.IsRay = false;
+     return line;
+}
+
+inline l2Line l2NewPtDir(Vector2f pt, Vector2f dir, bool isRay)
+{
+     l2Line line;
+     line.Pt = pt;
+     line.Dir = v2Normalized(dir);
+     line.IsRay = isRay;
+     return line;
+}
+
+inline l2Line l2NewPtAng(Vector2f pt, float angle, bool isRay)
+{
+     l2Line line;
+     line.Pt = pt;
+     line.Dir = v2FromAngle(angle);
+     line.IsRay = isRay;
+     return line;
+}
+
+inline l2Line l2NewSlopeInt(float m, float b)
+{
+     l2Line line;
+     line.Dir = v2Normalized(v2New(1.0, m));
+     line.Pt = v2New(0.0,b);
+     line.IsRay = false;
+     return line;
+}
+
+inline l2Line l2NewPtPt(Vector2f v1, Vector2f v2)
+{
+     l2Line line;
+     line.Pt = v1;
+     line.Dir = v2Add(v1, v2Opposite(v2));
+     line.IsRay = false;
+     return line;
+}
+
+float l2GetAngle(l2Line line)
+{
+     return v2Angle(line.Dir);
+}
+
+float l2GetSlope(l2Line line)
+{
+     if(abs(line.Dir.X) <= (1.0 / floatMax))
+     {
+          if(line.Dir.X >= 0.0)
+              return floatMax;
+          else
+              return -1.0 * floatMax;
+     }
+     return line.Dir.Y / line.Dir.X;
+}
+
+bool l2Parralel(l2Line L1, l2Line L2)
+{
+     float dX2dY1 = L1.Dir.Y * L2.Dir.X;
+     float dX1dY2 = L1.Dir.X * L2.Dir.Y;
+     float denom = dX2dY1 - dX1dY2;
+     return abs(denom) <= 0.000005;
+}
+
+Vector2f l2Intercept(l2Line L1, l2Line L2)
+{
+
+     float dX2dY1 = L1.Dir.Y * L2.Dir.X;
+     float dX1dY2 = L1.Dir.X * L2.Dir.Y;
+     float denom = dX2dY1 - dX1dY2;
+     if(abs(denom) <= 0.000005)
+         return v2Zero;
+     float dX1dX2 = L1.Dir.X * L2.Dir.X;
+     float difY = L1.Pt.Y - L2.Pt.Y;
+     float X = (dX2dY1 * L1.Pt.X -
+                dX1dY2 * L2.Pt.X +
+                dX1dX2 * dX1dX2 * difY)/
+                denom;
+     float Y;
+     if(abs(L1.Dir.X) <= 0.000005)
+         Y = L1.Pt.Y;
+     else
+         Y = (X - L1.Pt.X) * L1.Dir.Y / L1.Dir.X + L1.Pt.Y;
+     return v2New(X,Y);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

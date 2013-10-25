@@ -1,0 +1,42 @@
+#include "Lib\LibV2.c"
+#include "Lib\BeepCode.c"
+#include "Lib\MotorManager.c"
+#include "Lib\TachoNav.c"
+#define scale 1.0
+
+Vector2f Coors[3];
+inline int round(float x)
+{
+     asm{
+         add x, x, 0.5
+         trunc __RETVAL__, x
+     }
+}
+void init()
+{
+     TextOut(0, LCD_LINE1, "SetCoorList" , DRAW_OPT_CLEAR);
+     Coors[0] = v2New(0.5,1.5);
+     Coors[1] = v2New(1.0,0.0);
+     Coors[2] = v2New(0.0,0.0);
+     TextOut(0, LCD_LINE2, "UpdateScale" , DRAW_OPT_NORMAL);
+     Coors *= scale;
+     TextOut(0, LCD_LINE3, "Start TachoNav" , DRAW_OPT_NORMAL);
+
+     tnSetDefaults();
+     StartTask(NavigateByTachometer);
+     TextOut(0, LCD_LINE4, "Init Finished!" , DRAW_OPT_NORMAL);
+     Wait(500);
+
+}
+
+task main()
+{
+     init();
+     for(int i = 0; i < ArrayLen(Coors); i++)
+     {
+          mmMoveToPt(Coors[i]);
+     }
+     mmTurnToHeading(v2Angle(v2Dif(Coors[0], Coors[1])));
+}
+
+
